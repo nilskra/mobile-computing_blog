@@ -1,23 +1,25 @@
-import 'package:blog_beispiel/blog.dart';
+
+import 'package:computing_blog/models/blog.dart';
+import 'package:uuid/uuid.dart';
 
 List<Blog> blogs = [
   Blog(
     title: "Lorem ipsum",
     content: "Blabliblub",
-    date: "31.10.2025",
-    liked: false,
+    publishedAt: DateTime.now(), 
+    id: Uuid().toString(),
   ),
   Blog(
     title: "Lorem ipsum",
     content: "Blabliblub",
-    date: "31.10.2025",
-    liked: false,
+    publishedAt: DateTime.now(),
+    id: Uuid().toString(),
   ),
   Blog(
     title: "Pause!!!!!!!!!!!!!!!!!!!!",
     content: "Blabliblub",
-    date: "31.10.2025",
-    liked: true,
+    publishedAt: DateTime.now(),
+    id: Uuid().toString(),
   ),
 ];
 

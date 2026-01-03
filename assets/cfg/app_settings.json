@@ -1,0 +1,7 @@
+{
+  "appwriteBaseUrl": "cloud.appwrite.io",
+  "appwriteProjectId": "6568509f75ac404ff6ae",
+  "appwriteApiKey": "ac0f362d0cf82fe3d138195e142c0a87a88cee4e2c48821192fb307e1a1c74ee694246f90082b4441aa98a2edaddead28ed6d18cf08c4de0df90dcaeeb53d14f14fb9eeb2edec6708c9553434f1d8df8f8acbfbefd35cccb70f2ab0f9a334dfd979b6052f6e8b8610d57465cbe8d71a7f65e8d48aede789eef6b976b1fe9b2e2",
+  "appwriteDbPath": "/v1/databases/blog-db/collections",
+  "blogCollectionPath": "blogs/documents"
+}

@@ -1,96 +1,77 @@
-import 'package:blog_beispiel/blog.dart';
-import 'package:blog_beispiel/blog_service.dart';
+import 'package:computing_blog/core/logger.util.dart';
+import 'package:computing_blog/di/get_it_setup.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:global_configuration/global_configuration.dart';
+import 'package:logger/logger.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'router/app_router.dart';
+
+Future<void> main() async {
+  Logger.level = Level.debug;
+  WidgetsFlutterBinding.ensureInitialized();
+
+  const flavor = String.fromEnvironment(
+    'FLUTTER_APP_FLAVOR',
+    defaultValue: 'development',
+  );
+
+  await GlobalConfiguration().loadFromAsset('app_settings.json');
+
+  configureDependencies();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint("Flutter Error: ${details.exception}");
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    if (kDebugMode) {
+      return ErrorWidget(details.exception); // Standard "Red Screen" im Debug
+    }
+    return const Center(
+      child: Text(
+        "Ein unerwarteter Fehler ist aufgetreten.",
+        style: TextStyle(color: Colors.orange),
+      ),
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught error: $error');
+    return true;
+  };
+
+  runApp(MyApp());
 }
+
+final GlobalKey<NavigatorState> mainNavigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final log = getLogger();
+  MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Blog App',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyBlogPage(title: 'Blog'),
+    log.d('Debug-Nachricht aus der build-Methode.');
+    log.i('Info-Nachricht aus der build-Methode.');
+    log.e('Error-Nachricht aus der build-Methode.');
+    return MaterialApp.router(
+      routerConfig: appRouter,
+      title: "Interaction and State",
+      debugShowCheckedModeBanner: false,
+      theme: _initializeAppTheme(Brightness.light),
+      darkTheme: _initializeAppTheme(Brightness.dark),
     );
   }
-}
 
-class MyBlogPage extends StatefulWidget {
-  const MyBlogPage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyBlogPage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyBlogPage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-
-        title: Text(widget.title),
+  ThemeData _initializeAppTheme(Brightness brightness) {
+    return ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.purple,
+        brightness: brightness,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: blogs.map((item) => BlogCard(blog: item)).toList(),
-        ),
-      ),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
-  }
-}
-
-class BlogCard extends StatelessWidget {
-  const BlogCard({super.key, required this.blog});
-
-  final Blog blog;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(blog.title, style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(blog.content),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-              children: [
-                Text(blog.date),
-                Icon(blog.liked ? Icons.favorite : Icons.heart_broken),
-              ],
-            ),
-          ],
-        ),
-      ),
+      textTheme: const TextTheme(titleLarge: TextStyle(fontSize: 20)),
     );
   }
 }
