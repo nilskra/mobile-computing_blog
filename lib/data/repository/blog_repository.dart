@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:computing_blog/core/exceptions.dart';
 import 'package:computing_blog/core/result.dart';
-import 'package:computing_blog/data/blog_api.dart';
-import 'package:computing_blog/models/blog.dart';
+import 'package:computing_blog/data/api/blog_api.dart';
+import 'package:computing_blog/domain/models/blog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:injectable/injectable.dart';
 
@@ -58,7 +58,7 @@ class BlogRepository {
 
     await getBlogPosts();
   }
-  
+
   void dispose() {
     _blogController.close();
   }

@@ -3,7 +3,7 @@ import 'package:global_configuration/global_configuration.dart';
 import 'package:http/http.dart' as http;
 import 'package:injectable/injectable.dart';
 
-import '../models/blog.dart';
+import '../../domain/models/blog.dart';
 
 @lazySingleton
 class BlogApi {

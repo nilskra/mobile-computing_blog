@@ -1,4 +1,4 @@
-import 'package:computing_blog/models/blog.dart';
+import 'package:computing_blog/domain/models/blog.dart';
 
 sealed class HomeState {}
 

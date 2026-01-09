@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
-import '../../../models/blog.dart';
+import '../../../domain/models/blog.dart';
 
 @injectable
 class BlogDetailViewModel extends ChangeNotifier {

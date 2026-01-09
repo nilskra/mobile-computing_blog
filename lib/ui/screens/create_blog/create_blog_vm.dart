@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
-import '../../../data/blog_repository.dart';
-import '../../../models/blog.dart';
+import '../../../data/repository/blog_repository.dart';
+import '../../../domain/models/blog.dart';
 import 'package:uuid/uuid.dart';
 
 enum CreateBlogPageState { loading, editing, done }

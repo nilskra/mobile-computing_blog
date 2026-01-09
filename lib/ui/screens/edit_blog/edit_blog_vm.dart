@@ -1,7 +1,7 @@
-import 'package:computing_blog/data/blog_repository.dart';
+import 'package:computing_blog/data/repository/blog_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
-import '../../../models/blog.dart';
+import '../../../domain/models/blog.dart';
 
 enum EditBlogPageState { loading, editing, done }
 

@@ -12,9 +12,9 @@
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
 
-import '../data/blog_api.dart' as _i359;
-import '../data/blog_repository.dart' as _i168;
-import '../models/blog.dart' as _i600;
+import '../data/api/blog_api.dart' as _i359;
+import '../data/repository/blog_repository.dart' as _i168;
+import '../domain/models/blog.dart' as _i600;
 import '../ui/screens/blog_detail/blog_detail_vm.dart' as _i150;
 import '../ui/screens/create_blog/create_blog_vm.dart' as _i131;
 import '../ui/screens/edit_blog/edit_blog_vm.dart' as _i459;

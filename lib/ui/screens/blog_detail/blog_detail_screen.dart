@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../models/blog.dart';
+import '../../../domain/models/blog.dart';
 import '../../../router/app_routes.dart';
 
 class BlogDetailScreen extends StatelessWidget {

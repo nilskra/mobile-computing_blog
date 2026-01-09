@@ -10,7 +10,7 @@ import '../ui/screens/create_blog/create_blog_screen.dart';
 import '../ui/screens/create_blog/create_blog_vm.dart';
 import '../ui/screens/blog_detail/blog_detail_screen.dart';
 import '../ui/screens/blog_detail/blog_detail_vm.dart';
-import '../models/blog.dart';
+import '../domain/models/blog.dart';
 import 'app_routes.dart';
 
 final GoRouter appRouter = GoRouter(
