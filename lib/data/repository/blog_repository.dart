@@ -62,4 +62,9 @@ class BlogRepository {
   void dispose() {
     _blogController.close();
   }
+
+  Future<void> deleteBlogPost(String blogId) async {
+    await _api.deleteBlog(blogId: blogId);
+    await getBlogPosts(); // Stream aktualisieren
+  }
 }

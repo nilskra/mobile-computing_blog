@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
 import '../../../domain/models/blog.dart';
 
-enum EditBlogPageState { loading, editing, done }
+enum EditBlogPageState { loading, editing, saved, deleted }
 
 @injectable
 class EditBlogViewModel extends ChangeNotifier {
@@ -61,7 +61,17 @@ void setTitle(String value) {
       content: _content
     );
 
-    _pageState = EditBlogPageState.done;
+    _pageState = EditBlogPageState.saved;
+    notifyListeners();
+  }
+
+  Future<void> deleteBlog() async {
+    _pageState = EditBlogPageState.loading;
+    notifyListeners();
+
+    await _repo.deleteBlogPost(blog.id);
+
+    _pageState = EditBlogPageState.deleted;
     notifyListeners();
   }
 

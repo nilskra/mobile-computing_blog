@@ -1,4 +1,5 @@
 import 'package:computing_blog/core/logger.util.dart';
+import 'package:computing_blog/data/repository/auth_repository.dart';
 import 'package:computing_blog/di/get_it_setup.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:global_configuration/global_configuration.dart';
 import 'package:logger/logger.dart';
 
 import 'router/app_router.dart';
+
+import 'package:app_links/app_links.dart';
 
 Future<void> main() async {
   Logger.level = Level.debug;
@@ -41,6 +44,20 @@ Future<void> main() async {
     debugPrint('Uncaught error: $error');
     return true;
   };
+
+  // 1. Auth Status prüfen (wartet nicht zwingend auf Ergebnis, kann async sein)
+  await AuthRepository.instance.checkLoginStatus();
+
+  // 2. Deep Links Setup
+  final appLinks = AppLinks();
+  appLinks.uriLinkStream.listen((uri) {
+    if (uri.scheme == 'blogapp' && uri.host == 'login-callback') {
+      final code = uri.queryParameters['code'];
+      if (code != null) {
+        AuthRepository.instance.handleAuthCallback(code);
+      }
+    }
+  });
 
   runApp(MyApp());
 }

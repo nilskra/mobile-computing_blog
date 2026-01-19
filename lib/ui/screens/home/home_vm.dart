@@ -9,11 +9,31 @@ import '../../../domain/models/blog.dart';
 
 @injectable
 class HomeViewModel extends ChangeNotifier {
-  HomeViewModel(this._repo){
+  HomeViewModel(this._repo) {
+    state = HomeLoading();
+
+    _blogSub = _repo.blogStream.listen(
+      (blogs) {
+        if (_isDisposed) return;
+
+        state = HomeData(blogs);
+        notifyListeners();
+      },
+      onError: (e) {
+        if (_isDisposed) return;
+
+        state = HomeError(e.toString());
+        notifyListeners();
+      },
+    );
+
+    // initialer Load
     _repo.getBlogPosts();
   }
 
   final BlogRepository _repo;
+
+  late final StreamSubscription<List<Blog>> _blogSub;
 
   HomeState state = HomeLoading();
   bool _isDisposed = false;
@@ -27,6 +47,7 @@ class HomeViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _blogSub.cancel();
     _isDisposed = true;
     super.dispose();
   }
@@ -35,16 +56,19 @@ class HomeViewModel extends ChangeNotifier {
     state = HomeLoading();
     notifyListeners();
 
-    final result = await _repo.getBlogPosts();
+    await _repo.getBlogPosts();
+  }
 
-    if (_isDisposed) return;
-
-    switch (result) {
-      case Success(data: var blogs):
-        state = HomeData(blogs);
-      case Failure(error: var e):
-        state = HomeError(e.toString());
-    }
+  Future<void> toggleLike(Blog blog) async {
+  // optional: kleine UX-Optimierung (optimistisches Update)
+  final currentState = state;
+  if (currentState is HomeData) {
+    // wir lassen die echte Wahrheit dann vom Backend/Stream kommen
     notifyListeners();
   }
+
+  // Home nutzt aktuell fetch/state statt Stream-Listener -> nach Like neu laden
+  await fetch();
+}
+
 }

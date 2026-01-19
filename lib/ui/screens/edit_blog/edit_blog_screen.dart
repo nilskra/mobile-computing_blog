@@ -20,8 +20,10 @@ class EditBlogScreen extends StatelessWidget {
           switch (viewModel.pageState) {
             case EditBlogPageState.loading:
               return const Center(child: CircularProgressIndicator());
-            case EditBlogPageState.done:
+            case EditBlogPageState.saved:
               return Center(child: Text("Blog '${viewModel.title}' edited!"));
+            case EditBlogPageState.deleted:
+              return Center(child: Text("Blog '${viewModel.title}' deleted!"));
             case EditBlogPageState.editing:
               return Form(
                 key: viewModel.formKey,
@@ -61,6 +63,16 @@ class EditBlogScreen extends StatelessWidget {
                         child: const Text("Save"),
                       ),
                       const SizedBox(height: 8.0),
+                      OutlinedButton(
+                        onPressed: () async {
+                          final ok = await _confirmDelete(context);
+                          if (!ok) return;
+
+                          await viewModel.deleteBlog();
+                          context.go(AppRoutes.home);
+                        },
+                        child: const Text("Delete"),
+                      ),
                     ],
                   ),
                 ),
@@ -69,5 +81,26 @@ class EditBlogScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Future<bool> _confirmDelete(BuildContext context) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Delete blog?"),
+            content: const Text("This action cannot be undone."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text("Cancel"),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text("Delete"),
+              ),
+            ],
+          ),
+        )) ??
+        false;
   }
 }
