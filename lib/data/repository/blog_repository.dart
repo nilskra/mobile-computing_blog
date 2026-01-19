@@ -41,20 +41,18 @@ class BlogRepository {
   Future<void> addBlogPost(Blog blog) async {
     await _api.addBlog(
       title: blog.title,
-      content: blog.content,
-      headerImageUrl: blog.headerImageUrl, // nur wenn dein Blog-Modell das hat
+      content: blog.content ?? "",
     );
 
     await getBlogPosts();
   }
 
-  Future<void> updateBlogPost(
-    String id, {
+  Future<void> updateBlogPost({
     required String blogId,
     required String title,
     required String content,
   }) async {
-    await _api.patchBlog(blogId: id, title: title, content: content);
+    await _api.patchBlog(blogId: blogId, title: title, content: content);
 
     await getBlogPosts();
   }
@@ -67,4 +65,14 @@ class BlogRepository {
     await _api.deleteBlog(blogId: blogId);
     await getBlogPosts(); // Stream aktualisieren
   }
+
+  Future<void> toggleLike(Blog blog) async {
+  await _api.setLike(
+    blogId: blog.id,
+    likedByMe: !blog.isLikedByMe,
+  );
+
+  await getBlogPosts(); // Stream refresh
+}
+
 }
