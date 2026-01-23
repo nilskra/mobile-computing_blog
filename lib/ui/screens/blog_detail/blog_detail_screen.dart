@@ -50,7 +50,7 @@ class BlogDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  blog.content,
+                  blog.contentPreview ?? "",
                   style: Theme.of(
                     context,
                   ).textTheme.bodyLarge?.copyWith(height: 1.5),

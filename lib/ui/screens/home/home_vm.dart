@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:computing_blog/core/homestate.dart';
 import 'package:computing_blog/core/result.dart';
 import 'package:computing_blog/data/repository/blog_repository.dart';
+import 'package:computing_blog/domain/models/blog.dart';
 import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
-import '../../../domain/models/blog.dart';
 
 @injectable
 class HomeViewModel extends ChangeNotifier {
@@ -60,15 +60,8 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   Future<void> toggleLike(Blog blog) async {
-  // optional: kleine UX-Optimierung (optimistisches Update)
-  final currentState = state;
-  if (currentState is HomeData) {
-    // wir lassen die echte Wahrheit dann vom Backend/Stream kommen
-    notifyListeners();
+    // Optimistic UI could be added here; for now we rely on stream refresh.
+    await _repo.toggleLike(blog);
   }
-
-  // Home nutzt aktuell fetch/state statt Stream-Listener -> nach Like neu laden
-  await fetch();
-}
 
 }

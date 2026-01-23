@@ -1,9 +1,9 @@
 import 'package:computing_blog/core/homestate.dart';
+import 'package:computing_blog/domain/models/blog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../domain/models/blog.dart';
 import '../../../router/app_routes.dart';
 import 'home_vm.dart';
 
@@ -91,16 +91,35 @@ class BlogWidget extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8.0),
-                Text(blog.content),
+                Text(
+                  blog.contentPreview ?? blog.content ?? "",
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 8.0),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      blog.publishedDateString,
+                      blog.publishedAt.toIso8601String(),
                       style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                         fontStyle: FontStyle.italic,
                       ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Like',
+                          onPressed: () =>
+                              context.read<HomeViewModel>().toggleLike(blog),
+                          icon: Icon(
+                            blog.isLikedByMe
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                          ),
+                        ),
+                        Text('${blog.likes}'),
+                      ],
                     ),
                   ],
                 ),

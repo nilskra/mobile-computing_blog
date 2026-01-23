@@ -44,7 +44,7 @@ class EditBlogScreen extends StatelessWidget {
                       const SizedBox(height: 20),
                       TextFormField(
                         maxLines: 10,
-                        initialValue: blog.content,
+                        initialValue: blog.contentPreview,
                         decoration: const InputDecoration(
                           labelText: "Content",
                           border: OutlineInputBorder(),

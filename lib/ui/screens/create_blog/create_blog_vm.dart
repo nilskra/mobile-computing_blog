@@ -55,7 +55,14 @@ class CreateBlogViewModel extends ChangeNotifier {
 
     await Future.delayed(const Duration(seconds: 1));
     await _repo.addBlogPost(
-      Blog(title: _title, content: _content, publishedAt: DateTime.now(), id: Uuid().toString()),
+      Blog(
+        id: Uuid().toString(),
+        author: 'me',
+        title: _title,
+        content: _content,
+        publishedAt: DateTime.now(),
+        createdByMe: true,
+      ),
     );
 
     _pageState = CreateBlogPageState.done;
