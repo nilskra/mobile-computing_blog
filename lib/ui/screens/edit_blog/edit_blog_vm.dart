@@ -55,7 +55,7 @@ void setTitle(String value) {
     notifyListeners();
 
     await Future.delayed(const Duration(seconds: 1));
-    await _repo.updateBlogPost(
+    await _repo.updateBlogPost( blog.id,
       blogId: blog.id,
       title: _title,
       content: _content,

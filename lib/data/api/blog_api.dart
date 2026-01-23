@@ -122,7 +122,7 @@ class BlogApi {
 
 
   /// POST /entries
-  Future<Blog> addBlog({required String title, required String content}) async {
+  Future<Blog> addBlog({required String title, required String content, String? headerImageUrl}) async {
     final response = await http.post(
       _entriesBaseUri,
       headers: await _authHeaders(),

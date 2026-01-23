@@ -1,3 +1,4 @@
+import 'package:computing_blog/ui/widgets/blog_header_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../domain/models/blog.dart';
@@ -41,7 +42,11 @@ class BlogDetailScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                if (blog.headerImageUrl != null &&
+                    blog.headerImageUrl!.isNotEmpty) ...[
+                  BlogHeaderImage(url: blog.headerImageUrl!),
+                  const SizedBox(height: 16),
+                ],
                 Text(
                   blog.title,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
