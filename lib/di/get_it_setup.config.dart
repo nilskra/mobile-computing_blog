@@ -17,6 +17,8 @@ import '../data/api/blog_api.dart' as _i228;
 import '../data/repository/blog_repository.dart' as _i1047;
 import '../domain/models/blog.dart' as _i778;
 import '../local/blog_cache.dart' as _i560;
+import '../local/pending_ops_store.dart' as _i717;
+import '../local/sync_service.dart' as _i1024;
 import '../ui/screens/blog_detail/blog_detail_vm.dart' as _i150;
 import '../ui/screens/create_blog/create_blog_vm.dart' as _i131;
 import '../ui/screens/edit_blog/edit_blog_vm.dart' as _i459;
@@ -36,20 +38,33 @@ extension GetItInjectableX on _i174.GetIt {
       () => storageModule.secureStorage,
     );
     gh.lazySingleton<_i560.BlogCache>(() => _i560.BlogCache());
+    gh.lazySingleton<_i717.PendingOpsStore>(() => _i717.PendingOpsStore());
     gh.factoryParam<_i150.BlogDetailViewModel, _i778.Blog, dynamic>(
       (blog, _) => _i150.BlogDetailViewModel(blog),
     );
-    gh.lazySingleton<_i1047.BlogRepository>(
-      () => _i1047.BlogRepository(gh<_i228.BlogApi>(), gh<_i560.BlogCache>()),
+    gh.lazySingleton<_i1024.SyncService>(
+      () => _i1024.SyncService(
+        gh<_i228.BlogApi>(),
+        gh<_i717.PendingOpsStore>(),
+        gh<_i560.BlogCache>(),
+      ),
     );
-    gh.factoryParam<_i459.EditBlogViewModel, _i778.Blog, dynamic>(
-      (blog, _) => _i459.EditBlogViewModel(gh<_i1047.BlogRepository>(), blog),
+    gh.lazySingleton<_i1047.BlogRepository>(
+      () => _i1047.BlogRepository(
+        gh<_i228.BlogApi>(),
+        gh<_i560.BlogCache>(),
+        gh<_i717.PendingOpsStore>(),
+        gh<_i1024.SyncService>(),
+      ),
     );
     gh.factory<_i131.CreateBlogViewModel>(
       () => _i131.CreateBlogViewModel(gh<_i1047.BlogRepository>()),
     );
     gh.factory<_i1038.HomeViewModel>(
       () => _i1038.HomeViewModel(gh<_i1047.BlogRepository>()),
+    );
+    gh.factoryParam<_i459.EditBlogViewModel, _i778.Blog, dynamic>(
+      (blog, _) => _i459.EditBlogViewModel(gh<_i1047.BlogRepository>(), blog),
     );
     return this;
   }

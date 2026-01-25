@@ -40,6 +40,24 @@ class BlogCache {
     return blogs;
   }
 
+  Future<void> upsert(Blog blog) async {
+  final db = await LocalDb.instance();
+  await _blogStore.record(blog.id).put(db, blog.toCacheMap());
+
+  await _metaStore.record('lastSync').put(db, {
+    'value': DateTime.now().toIso8601String(),
+  });
+}
+
+Future<void> removeById(String id) async {
+  final db = await LocalDb.instance();
+  await _blogStore.record(id).delete(db);
+
+  await _metaStore.record('lastSync').put(db, {
+    'value': DateTime.now().toIso8601String(),
+  });
+}
+
   Future<DateTime?> getLastSync() async {
     final db = await LocalDb.instance();
     final meta = await _metaStore.record('lastSync').get(db);
