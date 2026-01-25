@@ -12,7 +12,7 @@ import 'package:injectable/injectable.dart';
 @lazySingleton
 class BlogRepository {
   BlogRepository(this._api, this._cache) {
-    debugPrint('BlogRepository instance hash=$hashCode');
+    debugPrint('BlogRepository created (hash=$hashCode)');
   }
 
   final BlogApi _api;
@@ -23,18 +23,23 @@ class BlogRepository {
 
   List<Blog> _currentBlogs = [];
 
-  /// Beispiel: maximal alle 60 Sekunden wirklich zur API gehen,
-  /// sonst cached Daten nehmen (minimiert Datenzugriffe).
   static const _minFetchInterval = Duration(seconds: 60);
 
   Future<Result<List<Blog>>> getBlogPosts({bool forceRefresh = false}) async {
+    debugPrint('getBlogPosts called (forceRefresh=$forceRefresh)');
+
     try {
-      // 1) Wenn nicht force: TTL prüfen und ggf. Cache returnen
       if (!forceRefresh) {
         final lastSync = await _cache.getLastSync();
+        debugPrint('Last cache sync: $lastSync');
+
         if (lastSync != null &&
             DateTime.now().difference(lastSync) < _minFetchInterval) {
+          debugPrint('Cache still valid, loading blogs from cache');
+
           final cached = await _cache.getAll();
+          debugPrint('Loaded ${cached.length} blogs from cache');
+
           if (cached.isNotEmpty) {
             _currentBlogs = cached;
             _blogController.add(_currentBlogs);
@@ -43,47 +48,60 @@ class BlogRepository {
         }
       }
 
-      // 2) Online-Fetch
+      debugPrint('Fetching blogs from API');
       final blogs = await _api.getBlogs();
       blogs.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
 
-      // 3) Cache aktualisieren
-      await _cache.saveAll(blogs);
+      debugPrint('Fetched ${blogs.length} blogs from API');
 
-      // 4) Stream pushen
+      await _cache.saveAll(blogs);
+      debugPrint('Blogs saved to cache');
+
       _currentBlogs = blogs;
       _blogController.add(_currentBlogs);
 
       return Success(blogs);
     } on SocketException {
-      // Offline → Cache
+      debugPrint('SocketException → offline, trying cache');
+
       final cached = await _cache.getAll();
+      debugPrint('Loaded ${cached.length} blogs from cache (offline fallback)');
+
       if (cached.isNotEmpty) {
         _currentBlogs = cached;
         _blogController.add(_currentBlogs);
         return Success(cached);
       }
+
+      debugPrint('No cached blogs available');
       return Failure(NetworkException());
     } catch (e) {
-      // Auch bei Serverfehlern: Cache als Fallback
+      debugPrint('Error while fetching blogs: $e');
+      debugPrint('Trying cache as fallback');
+
       final cached = await _cache.getAll();
+      debugPrint('Loaded ${cached.length} blogs from cache (error fallback)');
+
       if (cached.isNotEmpty) {
         _currentBlogs = cached;
         _blogController.add(_currentBlogs);
         return Success(cached);
       }
+
       return Failure(ServerException(e.toString()));
     }
   }
 
   Future<void> addBlogPost(Blog blog) async {
+    debugPrint('addBlogPost started (title="${blog.title}")');
+
     await _api.addBlog(
       title: blog.title,
       content: blog.content ?? "",
       headerImageUrl: blog.headerImageUrl,
     );
 
-    // danach frisch holen (forceRefresh) und Cache aktualisieren
+    debugPrint('Blog created, refreshing blog list');
     await getBlogPosts(forceRefresh: true);
   }
 
@@ -93,22 +111,36 @@ class BlogRepository {
     required String title,
     required String content,
   }) async {
+    debugPrint('updateBlogPost started (blogId=$id)');
+
     await _api.patchBlog(blogId: id, title: title, content: content);
+
+    debugPrint('Blog updated, refreshing blog list');
     await getBlogPosts(forceRefresh: true);
   }
 
-  void dispose() {
-    _blogController.close();
-  }
-
   Future<void> deleteBlogPost(String blogId) async {
+    debugPrint('deleteBlogPost started (blogId=$blogId)');
+
     await _api.deleteBlog(blogId: blogId);
-    await getBlogPosts(); // Stream aktualisieren
+
+    debugPrint('Blog deleted, refreshing blog list');
+    await getBlogPosts();
   }
 
   Future<void> toggleLike(Blog blog) async {
+    debugPrint(
+      'toggleLike started (blogId=${blog.id}, currentLike=${blog.isLikedByMe})',
+    );
+
     await _api.setLike(blogId: blog.id, likedByMe: !blog.isLikedByMe);
 
-    await getBlogPosts(); // Stream refresh
+    debugPrint('Like toggled, refreshing blog list');
+    await getBlogPosts();
+  }
+
+  void dispose() {
+    debugPrint('BlogRepository disposed');
+    _blogController.close();
   }
 }

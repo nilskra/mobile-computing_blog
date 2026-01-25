@@ -118,8 +118,13 @@ class Blog {
     'content': content,
     'contentPreview': contentPreview,
     'publishedAt': publishedAt.toIso8601String(),
+    'lastUpdate': lastUpdate?.toIso8601String(),
+    'comments': comments,
     'headerImageUrl': headerImageUrl,
     'userIdsWithLikes': userIdsWithLikes,
+    'likes': likes,
+    'isLikedByMe': isLikedByMe,
+    'createdByMe': createdByMe,
   };
 
   factory Blog.fromCacheMap(Map<String, dynamic> map) {
@@ -127,15 +132,23 @@ class Blog {
       id: (map['id'] ?? '').toString(),
       author: (map['author'] ?? '').toString(),
       title: (map['title'] ?? '').toString(),
-      content: (map['content'] ?? '').toString(),
-      contentPreview: (map['contentPreview'] ?? '').toString(),
+      content: map['content'] as String?,
+      contentPreview: map['contentPreview'] as String?,
       publishedAt:
           DateTime.tryParse((map['publishedAt'] ?? '').toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      lastUpdate: map['lastUpdate'] == null
+          ? null
+          : DateTime.tryParse(map['lastUpdate'].toString()),
+      comments: map['comments'],
       headerImageUrl: map['headerImageUrl']?.toString(),
       userIdsWithLikes: map['userIdsWithLikes'] != null
           ? List<String>.from(map['userIdsWithLikes'] as List)
           : null,
+
+      likes: (map['likes'] as int?) ?? 0,
+      isLikedByMe: (map['isLikedByMe'] as bool?) ?? false,
+      createdByMe: (map['createdByMe'] as bool?) ?? false,
     );
   }
 }
