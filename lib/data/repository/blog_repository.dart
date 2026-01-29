@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:computing_blog/core/exceptions.dart';
+import 'package:computing_blog/core/logger.util.dart';
 import 'package:computing_blog/core/result.dart';
 import 'package:computing_blog/data/api/blog_api.dart';
 import 'package:computing_blog/domain/models/blog.dart';
@@ -17,13 +18,14 @@ import 'package:http/http.dart' as http;
 @lazySingleton
 class BlogRepository {
   BlogRepository(this._api, this._cache, this._pendingOps, this._sync) {
-    debugPrint('BlogRepository created (hash=$hashCode)');
+    logger.i('[REPO] BlogRepository created (hash=$hashCode)');
   }
 
   final BlogApi _api;
   final BlogCache _cache;
   final PendingOpsStore _pendingOps;
   final SyncService _sync;
+  final logger = getLogger();
 
   final _uuid = const Uuid();
 
@@ -35,68 +37,88 @@ class BlogRepository {
   static const _minFetchInterval = Duration(seconds: 60);
 
   Future<Result<List<Blog>>> getBlogPosts({bool forceRefresh = false}) async {
-    debugPrint('getBlogPosts called (forceRefresh=$forceRefresh)');
+    logger.i('[REPO] getBlogPosts(forceRefresh=$forceRefresh)');
 
     try {
       if (!forceRefresh) {
         final lastSync = await _cache.getLastSync();
-        debugPrint('Last cache sync: $lastSync');
+        logger.d('[REPO] cache lastSync=$lastSync');
 
         if (lastSync != null &&
             DateTime.now().difference(lastSync) < _minFetchInterval) {
-          debugPrint('Cache still valid, loading blogs from cache');
+          logger.i('[REPO] cache valid -> load from cache');
 
           final cached = await _cache.getAll();
-          debugPrint('Loaded ${cached.length} blogs from cache');
+          logger.i('[REPO] cache loaded count=${cached.length}');
 
           if (cached.isNotEmpty) {
             _currentBlogs = cached;
             _blogController.add(_currentBlogs);
+            logger.d(
+              '[REPO] stream emit from cache count=${_currentBlogs.length}',
+            );
             return Success(cached);
+          } else {
+            logger.w('[REPO] cache valid but empty -> fallback to API');
           }
+        } else {
+          logger.d('[REPO] cache stale/empty lastSync -> fetch API');
         }
+      } else {
+        logger.d('[REPO] forceRefresh -> fetch API');
       }
 
-      debugPrint('Fetching blogs from API');
+      logger.i('[REPO] fetching blogs from API');
       final blogs = await _api.getBlogs();
       blogs.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
-
-      debugPrint('Fetched ${blogs.length} blogs from API');
+      logger.i('[REPO] API fetched count=${blogs.length}');
 
       await _cache.saveAll(blogs);
-      debugPrint('Blogs saved to cache');
+      logger.i('[REPO] cache saveAll done count=${blogs.length}');
 
       _currentBlogs = blogs;
       _blogController.add(_currentBlogs);
+      logger.d('[REPO] stream emit from API count=${_currentBlogs.length}');
 
       // queued offline changes flushen
+      logger.i('[REPO] sync flush start');
       await _sync.sync();
+      logger.i('[REPO] sync flush done');
 
       return Success(blogs);
-    } on SocketException {
-      debugPrint('SocketException → offline, trying cache');
+    } on SocketException catch (e, s) {
+      logger.w(
+        '[REPO] offline (SocketException) -> fallback to cache',
+        error: e,
+        stackTrace: s,
+      );
 
       final cached = await _cache.getAll();
-      debugPrint('Loaded ${cached.length} blogs from cache (offline fallback)');
+      logger.i('[REPO] cache loaded (offline fallback) count=${cached.length}');
 
       if (cached.isNotEmpty) {
         _currentBlogs = cached;
         _blogController.add(_currentBlogs);
+        logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
         return Success(cached);
       }
 
-      debugPrint('No cached blogs available');
+      logger.w('[REPO] offline and no cache available -> NetworkException');
       return Failure(NetworkException());
-    } catch (e) {
-      debugPrint('Error while fetching blogs: $e');
-      debugPrint('Trying cache as fallback');
+    } catch (e, s) {
+      logger.e(
+        '[REPO] getBlogPosts failed -> try cache fallback',
+        error: e,
+        stackTrace: s,
+      );
 
       final cached = await _cache.getAll();
-      debugPrint('Loaded ${cached.length} blogs from cache (error fallback)');
+      logger.i('[REPO] cache loaded (error fallback) count=${cached.length}');
 
       if (cached.isNotEmpty) {
         _currentBlogs = cached;
         _blogController.add(_currentBlogs);
+        logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
         return Success(cached);
       }
 
@@ -105,7 +127,7 @@ class BlogRepository {
   }
 
   Future<void> addBlogPost(Blog blog) async {
-    debugPrint('addBlogPost started (title="${blog.title}")');
+    logger.i('[REPO] addBlogPost title="${blog.title}"');
 
     try {
       await _api.addBlog(
@@ -114,41 +136,53 @@ class BlogRepository {
         headerImageUrl: blog.headerImageUrl,
       );
 
-      debugPrint('Blog created online, refreshing blog list');
+      logger.i('[REPO] create online -> refresh');
       await getBlogPosts(forceRefresh: true);
 
+      logger.i('[REPO] sync flush start');
       await _sync.sync();
-    } catch (e) {
-      if (!_isOfflineError(e)) rethrow;
+      logger.i('[REPO] sync flush done');
+    } catch (e, s) {
+      if (!_isOfflineError(e)) {
+        logger.e(
+          '[REPO] create failed (not offline) -> rethrow',
+          error: e,
+          stackTrace: s,
+        );
+        rethrow;
+      }
 
-      debugPrint('Offline (web/mobile) → enqueue create + optimistic insert');
+      logger.w(
+        '[REPO] offline -> enqueue create + optimistic insert',
+        error: e,
+        stackTrace: s,
+      );
 
-      // 1) Temp-ID generieren
       final tempId = 'local-${_uuid.v4()}';
+      final opId = _uuid.v4();
 
-      // 2) Queue Eintrag
       await _pendingOps.add(
         PendingOp(
-          id: _uuid.v4(),
+          id: opId,
           type: PendingOpType.createBlog,
-          blogId: tempId, // tempId hier rein
+          blogId: tempId,
           createdAt: DateTime.now(),
           payload: {
             'title': blog.title,
             'content': blog.content ?? '',
             'headerImageUrl': blog.headerImageUrl,
-            'author': blog.author, // optional
+            'author': blog.author,
           },
         ),
       );
+      logger.w('[REPO] queued op=$opId type=createBlog tempId=$tempId');
 
-      // 3) Optimistisch lokalen Blog erstellen (wird in Cache + UI angezeigt)
       final optimistic = Blog(
         id: tempId,
         author: blog.author,
         title: blog.title,
         content: blog.content,
-        contentPreview: blog.contentPreview ?? blog.content, // optional
+        contentPreview: blog.contentPreview ?? blog.content,
         publishedAt: DateTime.now(),
         lastUpdate: DateTime.now(),
         headerImageUrl: blog.headerImageUrl,
@@ -160,6 +194,7 @@ class BlogRepository {
       );
 
       await _cache.upsert(optimistic);
+      logger.i('[REPO] optimistic cached tempId=$tempId');
       await _emitFromCache();
     }
   }
@@ -170,39 +205,57 @@ class BlogRepository {
     required String title,
     required String content,
   }) async {
-    debugPrint('updateBlogPost started (blogId=$id)');
+    logger.i('[REPO] updateBlogPost blogId=$id');
 
     try {
       await _api.patchBlog(blogId: id, title: title, content: content);
 
-      debugPrint('Blog updated online, refreshing blog list');
+      logger.i('[REPO] patch online -> refresh');
       await getBlogPosts(forceRefresh: true);
 
+      logger.i('[REPO] sync flush start');
       await _sync.sync();
-    } catch (e) {
-      if (!_isOfflineError(e)) rethrow;
+      logger.i('[REPO] sync flush done');
+    } catch (e, s) {
+      if (!_isOfflineError(e)) {
+        logger.e(
+          '[REPO] patch failed (not offline) -> rethrow',
+          error: e,
+          stackTrace: s,
+        );
+        rethrow;
+      }
 
-      debugPrint('Offline (web/mobile) → enqueue patch + optimistic update');
+      logger.w(
+        '[REPO] offline -> enqueue patch + optimistic update',
+        error: e,
+        stackTrace: s,
+      );
 
+      final opId = _uuid.v4();
       await _pendingOps.add(
         PendingOp(
-          id: _uuid.v4(),
+          id: opId,
           type: PendingOpType.patchBlog,
           blogId: id,
           createdAt: DateTime.now(),
           payload: {'title': title, 'content': content},
         ),
       );
+      logger.w('[REPO] queued op=$opId type=patchBlog blogId=$id');
 
       final cached = await _cache.getAll();
       final idx = cached.indexWhere((b) => b.id == id);
-      if (idx != -1) {
+      if (idx == -1) {
+        logger.w('[REPO] optimistic patch skipped -> not in cache blogId=$id');
+      } else {
         final updated = _applyPatchLocally(
           cached[idx],
           title: title,
           content: content,
         );
         await _cache.upsert(updated);
+        logger.i('[REPO] optimistic patched in cache blogId=$id');
       }
 
       await _emitFromCache();
@@ -210,40 +263,53 @@ class BlogRepository {
   }
 
   Future<void> deleteBlogPost(String blogId) async {
-    debugPrint('deleteBlogPost started (blogId=$blogId)');
+    logger.i('[REPO] deleteBlogPost blogId=$blogId');
 
     try {
       await _api.deleteBlog(blogId: blogId);
 
-      debugPrint('Blog deleted online, refreshing blog list');
+      logger.i('[REPO] delete online -> refresh');
       await getBlogPosts(forceRefresh: true);
 
-      // queued ops ggf. flushen
+      logger.i('[REPO] sync flush start');
       await _sync.sync();
-    } catch (e) {
-      if (!_isOfflineError(e)) rethrow;
+      logger.i('[REPO] sync flush done');
+    } catch (e, s) {
+      if (!_isOfflineError(e)) {
+        logger.e(
+          '[REPO] delete failed (not offline) -> rethrow',
+          error: e,
+          stackTrace: s,
+        );
+        rethrow;
+      }
 
-      debugPrint('Offline (web/mobile) → enqueue delete + optimistic remove');
+      logger.w(
+        '[REPO] offline -> enqueue delete + optimistic remove',
+        error: e,
+        stackTrace: s,
+      );
 
-      // 1) Queue
+      final opId = _uuid.v4();
       await _pendingOps.add(
         PendingOp(
-          id: _uuid.v4(),
+          id: opId,
           type: PendingOpType.deleteBlog,
           blogId: blogId,
           createdAt: DateTime.now(),
         ),
       );
+      logger.w('[REPO] queued op=$opId type=deleteBlog blogId=$blogId');
 
-      // 2) Cache optimistisch entfernen + UI updaten
       await _cache.removeById(blogId);
+      logger.i('[REPO] optimistic removed from cache blogId=$blogId');
       await _emitFromCache();
     }
   }
 
   Future<void> toggleLike(Blog blog) async {
-    debugPrint(
-      'toggleLike started (blogId=${blog.id}, currentLike=${blog.isLikedByMe})',
+    logger.i(
+      '[REPO] toggleLike blogId=${blog.id} currentLiked=${blog.isLikedByMe} likes=${blog.likes}',
     );
 
     final nextLiked = !blog.isLikedByMe;
@@ -251,35 +317,53 @@ class BlogRepository {
     try {
       await _api.setLike(blogId: blog.id, likedByMe: nextLiked);
 
-      debugPrint('Like toggled online, refreshing blog list');
+      logger.i('[REPO] like online -> refresh');
       await getBlogPosts(forceRefresh: true);
 
+      logger.i('[REPO] sync flush start');
       await _sync.sync();
-    } catch (e) {
-      if (!_isOfflineError(e)) rethrow;
+      logger.i('[REPO] sync flush done');
+    } catch (e, s) {
+      if (!_isOfflineError(e)) {
+        logger.e(
+          '[REPO] like failed (not offline) -> rethrow',
+          error: e,
+          stackTrace: s,
+        );
+        rethrow;
+      }
 
-      debugPrint('Offline (web/mobile) → enqueue like + optimistic update');
+      logger.w(
+        '[REPO] offline -> enqueue like + optimistic update',
+        error: e,
+        stackTrace: s,
+      );
 
-      // 1) Queue
+      final opId = _uuid.v4();
       await _pendingOps.add(
         PendingOp(
-          id: _uuid.v4(),
+          id: opId,
           type: PendingOpType.setLike,
           blogId: blog.id,
           createdAt: DateTime.now(),
           payload: {'likedByMe': nextLiked},
         ),
       );
+      logger.w(
+        '[REPO] queued op=$opId type=setLike blogId=${blog.id} nextLiked=$nextLiked',
+      );
 
-      // 2) Cache optimistisch updaten + UI pushen
       final updated = _applyLikeLocally(blog, nextLiked);
       await _cache.upsert(updated);
+      logger.i(
+        '[REPO] optimistic like cached blogId=${blog.id} likedByMe=${updated.isLikedByMe} likes=${updated.likes}',
+      );
       await _emitFromCache();
     }
   }
 
   void dispose() {
-    debugPrint('BlogRepository disposed');
+    logger.i('[REPO] disposed');
     _blogController.close();
   }
 
@@ -287,6 +371,7 @@ class BlogRepository {
     final cached = await _cache.getAll();
     _currentBlogs = cached;
     _blogController.add(_currentBlogs);
+    logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
   }
 
   Blog _applyPatchLocally(Blog blog, {String? title, String? content}) {
@@ -330,11 +415,7 @@ class BlogRepository {
 
   bool _isOfflineError(Object e) {
     if (e is SocketException) return true;
-
-    // Flutter Web: "ClientException: Failed to fetch"
     if (e is http.ClientException) return true;
-
-    // optional: manche SSL/Handshake Fälle
     if (e is HandshakeException) return true;
 
     final msg = e.toString().toLowerCase();
