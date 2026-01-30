@@ -83,6 +83,14 @@ class BlogWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (blog.headerImageUrl != null)
+                  Text("ich bin hier!)")
+                  
+                else
+                  drawImage(
+                    'https://picsum.photos/seed/${blog.id}/500',
+                  ), // Es soll random Bild angezeigt werden
+                SizedBox(height: 5),
                 Text(
                   blog.title,
                   style: const TextStyle(
@@ -128,6 +136,34 @@ class BlogWidget extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget drawImage(String imageUrl) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start, // 👈 links!
+      children: [
+        SizedBox(
+          width: 300,
+          height: 200,
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return const Center(child: CircularProgressIndicator());
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(
+                Icons.broken_image_outlined,
+                size: 50,
+                color: Colors.grey,
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 5),
+      ],
     );
   }
 }
