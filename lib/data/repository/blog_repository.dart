@@ -375,12 +375,16 @@ class BlogRepository {
   }
 
   Blog _applyPatchLocally(Blog blog, {String? title, String? content}) {
+    // HomeScreen rendert `contentPreview ?? content`, daher muss Preview bei Offline-Patch mitkommen.
+    final nextContent = content ?? blog.content;
+    final nextPreview = (content != null) ? content : blog.contentPreview;
+
     return Blog(
       id: blog.id,
       author: blog.author,
       title: title ?? blog.title,
-      contentPreview: blog.contentPreview,
-      content: content ?? blog.content,
+      contentPreview: nextPreview,
+      content: nextPreview,
       publishedAt: blog.publishedAt,
       lastUpdate: DateTime.now(),
       comments: blog.comments,
