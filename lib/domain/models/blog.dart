@@ -15,6 +15,9 @@ class Blog {
   final Object? comments;
   final String? headerImageUrl;
 
+  /// Local-only: downloaded header image stored in DB cache as base64
+  final String? headerImageBase64;
+
   final bool isLikedByMe;
   final int likes;
   final List<String>? userIdsWithLikes; // optional, might not exist in response
@@ -30,6 +33,7 @@ class Blog {
     this.lastUpdate,
     this.comments,
     this.headerImageUrl,
+    this.headerImageBase64,
     this.userIdsWithLikes,
     this.isLikedByMe = false,
     this.likes = 0,
@@ -50,20 +54,15 @@ class Blog {
           : DateTime.parse(json['updatedAt'] as String),
       comments: json['comments'],
       headerImageUrl: json['headerImageUrl'] as String?,
-      userIdsWithLikes:
-          (json['userIdsWithLikes'] as List<dynamic>?)?.cast<String>(),
+      userIdsWithLikes: (json['userIdsWithLikes'] as List<dynamic>?)
+          ?.cast<String>(),
       isLikedByMe: (json['likedByMe'] as bool?) ?? false,
       likes: (json['likes'] as int?) ?? 0,
       createdByMe: (json['createdByMe'] as bool?) ?? false,
     );
   }
 
-  /// ✅ Parses an API response that may wrap blogs like:
-  /// 1) { data: [ { ... } ] }
-  /// 2) { data: { ... } }
-  /// 3) { ... }
   factory Blog.fromApiResponse(dynamic decoded) {
-    // { data: [ ... ] }
     if (decoded is Map<String, dynamic> && decoded['data'] is List) {
       final list = decoded['data'] as List<dynamic>;
       if (list.isEmpty) {
@@ -72,12 +71,10 @@ class Blog {
       return Blog.fromJson(list.first as Map<String, dynamic>);
     }
 
-    // { data: { ... } }
     if (decoded is Map<String, dynamic> && decoded['data'] is Map) {
       return Blog.fromJson(decoded['data'] as Map<String, dynamic>);
     }
 
-    // { ... }
     if (decoded is Map<String, dynamic>) {
       return Blog.fromJson(decoded);
     }
@@ -85,19 +82,49 @@ class Blog {
     throw const FormatException('Invalid single blog response format');
   }
 
-  /// ✅ Parses list response (your GET /entries)
+  Blog copyWith({
+    String? id,
+    String? author,
+    String? title,
+    String? contentPreview,
+    String? content,
+    DateTime? publishedAt,
+    DateTime? lastUpdate,
+    Object? comments,
+    String? headerImageUrl,
+    String? headerImageBase64,
+    bool? isLikedByMe,
+    int? likes,
+    List<String>? userIdsWithLikes,
+    bool? createdByMe,
+  }) {
+    return Blog(
+      id: id ?? this.id,
+      author: author ?? this.author,
+      title: title ?? this.title,
+      contentPreview: contentPreview ?? this.contentPreview,
+      content: content ?? this.content,
+      publishedAt: publishedAt ?? this.publishedAt,
+      lastUpdate: lastUpdate ?? this.lastUpdate,
+      comments: comments ?? this.comments,
+      headerImageUrl: headerImageUrl ?? this.headerImageUrl,
+      headerImageBase64: headerImageBase64 ?? this.headerImageBase64,
+      isLikedByMe: isLikedByMe ?? this.isLikedByMe,
+      likes: likes ?? this.likes,
+      userIdsWithLikes: userIdsWithLikes ?? this.userIdsWithLikes,
+      createdByMe: createdByMe ?? this.createdByMe,
+    );
+  }
+
   static List<Blog> listFromApiResponse(dynamic decoded) {
-    final dynamic raw =
-        (decoded is Map<String, dynamic>) ? decoded['data'] : decoded;
+    final dynamic raw = (decoded is Map<String, dynamic>)
+        ? decoded['data']
+        : decoded;
 
     if (raw is List) {
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(Blog.fromJson)
-          .toList();
+      return raw.whereType<Map<String, dynamic>>().map(Blog.fromJson).toList();
     }
 
-    // fallback if backend ever returns a single object
     if (raw is Map<String, dynamic>) {
       return [Blog.fromJson(raw)];
     }
@@ -106,14 +133,9 @@ class Blog {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      "title": title,
-      "content": content ?? "",
-      // "headerImageUrl": headerImageUrl ?? "",
-    };
+    return {"title": title, "content": content ?? ""};
   }
 
-  // Optional helpers
   String get displayText => content ?? contentPreview ?? "";
 
   static String? titleValidator(String? value) {
@@ -122,7 +144,51 @@ class Blog {
   }
 
   static String? contentValidator(String? value) {
-    if (value == null || value.length < 10) return "Enter at least 10 characters";
+    if (value == null || value.length < 10)
+      return "Enter at least 10 characters";
     return null;
+  }
+
+  Map<String, dynamic> toCacheMap() => {
+    'id': id,
+    'author': author,
+    'title': title,
+    'content': content,
+    'contentPreview': contentPreview,
+    'publishedAt': publishedAt.toIso8601String(),
+    'lastUpdate': lastUpdate?.toIso8601String(),
+    'comments': comments,
+    'headerImageUrl': headerImageUrl,
+    'headerImageBase64': headerImageBase64,
+    'userIdsWithLikes': userIdsWithLikes,
+    'likes': likes,
+    'isLikedByMe': isLikedByMe,
+    'createdByMe': createdByMe,
+  };
+
+  factory Blog.fromCacheMap(Map<String, dynamic> map) {
+    return Blog(
+      id: (map['id'] ?? '').toString(),
+      author: (map['author'] ?? '').toString(),
+      title: (map['title'] ?? '').toString(),
+      content: map['content'] as String?,
+      contentPreview: map['contentPreview'] as String?,
+      publishedAt:
+          DateTime.tryParse((map['publishedAt'] ?? '').toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      lastUpdate: map['lastUpdate'] == null
+          ? null
+          : DateTime.tryParse(map['lastUpdate'].toString()),
+      comments: map['comments'],
+      headerImageUrl: map['headerImageUrl']?.toString(),
+      headerImageBase64: map['headerImageBase64']?.toString(),
+      userIdsWithLikes: map['userIdsWithLikes'] != null
+          ? List<String>.from(map['userIdsWithLikes'] as List)
+          : null,
+
+      likes: (map['likes'] as int?) ?? 0,
+      isLikedByMe: (map['isLikedByMe'] as bool?) ?? false,
+      createdByMe: (map['createdByMe'] as bool?) ?? false,
+    );
   }
 }

@@ -11,6 +11,9 @@ import 'router/app_router.dart';
 import 'package:app_links/app_links.dart';
 
 Future<void> main() async {
+  final logger = getLogger();
+  logger.i('App started');
+
   Logger.level = Level.debug;
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -21,7 +24,9 @@ Future<void> main() async {
 
   await GlobalConfiguration().loadFromAsset('app_settings.json');
 
+  logger.i('GetIt setup started');
   configureDependencies();
+  logger.i('GetIt setup finished');
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
@@ -70,9 +75,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    log.d('Debug-Nachricht aus der build-Methode.');
-    log.i('Info-Nachricht aus der build-Methode.');
-    log.e('Error-Nachricht aus der build-Methode.');
+    log.i('MyApp executed');
+
     return MaterialApp.router(
       routerConfig: appRouter,
       title: "Interaction and State",
