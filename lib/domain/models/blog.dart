@@ -15,6 +15,9 @@ class Blog {
   final Object? comments;
   final String? headerImageUrl;
 
+  /// Local-only: downloaded header image stored in DB cache as base64
+  final String? headerImageBase64;
+
   final bool isLikedByMe;
   final int likes;
   final List<String>? userIdsWithLikes; // optional, might not exist in response
@@ -30,6 +33,7 @@ class Blog {
     this.lastUpdate,
     this.comments,
     this.headerImageUrl,
+    this.headerImageBase64,
     this.userIdsWithLikes,
     this.isLikedByMe = false,
     this.likes = 0,
@@ -78,6 +82,40 @@ class Blog {
     throw const FormatException('Invalid single blog response format');
   }
 
+  Blog copyWith({
+    String? id,
+    String? author,
+    String? title,
+    String? contentPreview,
+    String? content,
+    DateTime? publishedAt,
+    DateTime? lastUpdate,
+    Object? comments,
+    String? headerImageUrl,
+    String? headerImageBase64,
+    bool? isLikedByMe,
+    int? likes,
+    List<String>? userIdsWithLikes,
+    bool? createdByMe,
+  }) {
+    return Blog(
+      id: id ?? this.id,
+      author: author ?? this.author,
+      title: title ?? this.title,
+      contentPreview: contentPreview ?? this.contentPreview,
+      content: content ?? this.content,
+      publishedAt: publishedAt ?? this.publishedAt,
+      lastUpdate: lastUpdate ?? this.lastUpdate,
+      comments: comments ?? this.comments,
+      headerImageUrl: headerImageUrl ?? this.headerImageUrl,
+      headerImageBase64: headerImageBase64 ?? this.headerImageBase64,
+      isLikedByMe: isLikedByMe ?? this.isLikedByMe,
+      likes: likes ?? this.likes,
+      userIdsWithLikes: userIdsWithLikes ?? this.userIdsWithLikes,
+      createdByMe: createdByMe ?? this.createdByMe,
+    );
+  }
+
   static List<Blog> listFromApiResponse(dynamic decoded) {
     final dynamic raw = (decoded is Map<String, dynamic>)
         ? decoded['data']
@@ -121,6 +159,7 @@ class Blog {
     'lastUpdate': lastUpdate?.toIso8601String(),
     'comments': comments,
     'headerImageUrl': headerImageUrl,
+    'headerImageBase64': headerImageBase64,
     'userIdsWithLikes': userIdsWithLikes,
     'likes': likes,
     'isLikedByMe': isLikedByMe,
@@ -142,6 +181,7 @@ class Blog {
           : DateTime.tryParse(map['lastUpdate'].toString()),
       comments: map['comments'],
       headerImageUrl: map['headerImageUrl']?.toString(),
+      headerImageBase64: map['headerImageBase64']?.toString(),
       userIdsWithLikes: map['userIdsWithLikes'] != null
           ? List<String>.from(map['userIdsWithLikes'] as List)
           : null,

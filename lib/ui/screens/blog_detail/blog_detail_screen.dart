@@ -44,7 +44,7 @@ class BlogDetailScreen extends StatelessWidget {
                 ),
                 if (blog.headerImageUrl != null &&
                     blog.headerImageUrl!.isNotEmpty) ...[
-                  BlogHeaderImage(url: blog.headerImageUrl!),
+                  BlogHeaderImage(url: blog.headerImageUrl!, base64: blog.headerImageBase64),
                   const SizedBox(height: 16),
                 ],
                 Text(
