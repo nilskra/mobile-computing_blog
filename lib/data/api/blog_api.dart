@@ -84,14 +84,18 @@ class BlogApi {
     return entry.replace(path: '$normalized/like-info');
   }
 
-  /// GET /entries
-  Future<List<Blog>> getBlogs() async {
-    logger.i('GET /entries');
+  /// GET /entries (paginated, default = 10)
+  Future<List<Blog>> getBlogs({int pageIndex = 0, int pageSize = 10}) async {
+    logger.i('GET /entries pageIndex=$pageIndex pageSize=$pageSize');
 
-    final response = await http.get(
-      _entriesBaseUri,
-      headers: await _authHeaders(),
+    final uri = _entriesBaseUri.replace(
+      queryParameters: {
+        'pageIndex': pageIndex.toString(),
+        'pageSize': pageSize.toString(),
+      },
     );
+
+    final response = await http.get(uri, headers: await _authHeaders());
 
     logger.d('GET /entries response status=${response.statusCode}');
 
@@ -107,7 +111,10 @@ class BlogApi {
         ? (decoded['data'] as List<dynamic>? ?? [])
         : (decoded as List<dynamic>);
 
-    logger.d('GET /entries parsed ${items.length} items');
+    logger.d(
+      'GET /entries parsed ${items.length} items '
+      '(pageIndex=$pageIndex pageSize=$pageSize)',
+    );
 
     return items.whereType<Map<String, dynamic>>().map(Blog.fromJson).toList();
   }

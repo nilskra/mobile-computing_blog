@@ -34,6 +34,8 @@ class BlogRepository {
 
   List<Blog> _currentBlogs = [];
 
+  static const _writeFastFailTimeout = Duration(seconds: 3);
+
   static const _minFetchInterval = Duration(seconds: 60);
 
   // ----------------------------
@@ -211,7 +213,7 @@ class BlogRepository {
         title: blog.title,
         content: blog.content ?? "",
         headerImageUrl: blog.headerImageUrl,
-      );
+      ).timeout(_writeFastFailTimeout);
 
       logger.i('[REPO] create online -> refresh');
       await getBlogPosts(forceRefresh: true);
@@ -283,7 +285,7 @@ class BlogRepository {
     logger.i('[REPO] updateBlogPost blogId=$id');
 
     try {
-      await _api.patchBlog(blogId: id, title: title, content: content);
+      await _api.patchBlog(blogId: id, title: title, content: content).timeout(_writeFastFailTimeout);
 
       logger.i('[REPO] patch online -> refresh');
       await getBlogPosts(forceRefresh: true);
@@ -333,7 +335,7 @@ class BlogRepository {
     logger.i('[REPO] deleteBlogPost blogId=$blogId');
 
     try {
-      await _api.deleteBlog(blogId: blogId);
+      await _api.deleteBlog(blogId: blogId).timeout(_writeFastFailTimeout);
 
       logger.i('[REPO] delete online -> refresh');
       await getBlogPosts(forceRefresh: true);
@@ -374,7 +376,7 @@ class BlogRepository {
     final nextLiked = !blog.isLikedByMe;
 
     try {
-      await _api.setLike(blogId: blog.id, likedByMe: nextLiked);
+      await _api.setLike(blogId: blog.id, likedByMe: nextLiked).timeout(_writeFastFailTimeout);
 
       logger.i('[REPO] like online -> refresh');
       await getBlogPosts(forceRefresh: true);
