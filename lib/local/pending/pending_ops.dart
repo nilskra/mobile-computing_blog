@@ -9,12 +9,11 @@ class PendingOp {
     this.payload,
   });
 
-  final String id; // uuid oder timestamp string
+  final String id;
   final PendingOpType type;
   final String blogId;
   final DateTime createdAt;
 
-  /// z.B. { "title": "...", "content": "..." } oder { "likedByMe": true }
   final Map<String, dynamic>? payload;
 
   Map<String, dynamic> toMap() => {

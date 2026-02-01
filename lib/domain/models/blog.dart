@@ -2,25 +2,16 @@ class Blog {
   final String id;
   final String author;
   final String title;
-
-  /// In list + detail responses from your backend, you currently only get contentPreview
   final String? contentPreview;
-
-  /// Full content is currently NOT returned by your backend (stays null most of the time)
   final String? content;
-
   final DateTime publishedAt;
   final DateTime? lastUpdate;
-
   final Object? comments;
   final String? headerImageUrl;
-
-  /// Local-only: downloaded header image stored in DB cache as base64
   final String? headerImageBase64;
-
   final bool isLikedByMe;
   final int likes;
-  final List<String>? userIdsWithLikes; // optional, might not exist in response
+  final List<String>? userIdsWithLikes;
   final bool createdByMe;
 
   Blog({

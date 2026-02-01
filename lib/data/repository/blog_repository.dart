@@ -6,10 +6,10 @@ import 'package:computing_blog/core/logger.util.dart';
 import 'package:computing_blog/core/result.dart';
 import 'package:computing_blog/data/api/blog_api.dart';
 import 'package:computing_blog/domain/models/blog.dart';
-import 'package:computing_blog/local/blog_cache.dart';
-import 'package:computing_blog/local/pending_ops.dart';
-import 'package:computing_blog/local/pending_ops_store.dart';
-import 'package:computing_blog/local/sync_service.dart';
+import 'package:computing_blog/local/cache/blog_cache.dart';
+import 'package:computing_blog/local/pending/pending_ops.dart';
+import 'package:computing_blog/local/pending/pending_ops_store.dart';
+import 'package:computing_blog/data/sync/sync_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:injectable/injectable.dart';
 import 'package:uuid/uuid.dart';
@@ -130,7 +130,6 @@ class BlogRepository {
     logger.i('[REPO] getBlogPosts(forceRefresh=$forceRefresh)');
 
     try {
-      // 1) Cache path (if still fresh)
       if (!forceRefresh) {
         final cached = await _tryLoadFreshCache();
         if (cached != null && cached.isNotEmpty) {
@@ -141,13 +140,11 @@ class BlogRepository {
         }
       }
 
-      // 2) API path
       logger.i('[REPO] fetching blogs from API');
       final blogs = await _api.getBlogs();
       blogs.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
       logger.i('[REPO] API fetched count=${blogs.length}');
 
-      // Ensure url + base64 where possible (persist happens in saveAll)
       final withUrl = await _ensureHeaderUrlExists(blogs, persist: false);
       final enriched = await _ensureHeaderImagesDownloaded(withUrl, persist: false);
 
@@ -156,12 +153,10 @@ class BlogRepository {
 
       await _emit(enriched, source: 'api');
 
-      // Best-effort flush
       await _syncSafe();
 
       return Success(enriched);
     } catch (e, s) {
-      // 3) fallback to cache
       if (_isOfflineError(e)) {
         logger.w('[REPO] offline -> fallback to cache', error: e, stackTrace: s);
       } else {

@@ -2,7 +2,7 @@ import 'package:computing_blog/core/logger.util.dart';
 import 'package:injectable/injectable.dart';
 import 'package:sembast/sembast.dart';
 
-import 'local_db.dart';
+import '../cache/local_db.dart';
 import 'pending_ops.dart';
 
 @lazySingleton

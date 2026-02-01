@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:computing_blog/core/logger.util.dart';
 import 'package:injectable/injectable.dart';
 
-import '../data/api/blog_api.dart';
-import '../domain/models/blog.dart';
-import '../local/blog_cache.dart';
-import '../local/pending_ops_store.dart';
-import '../local/pending_ops.dart';
+import '../api/blog_api.dart';
+import '../../domain/models/blog.dart';
+import '../../local/cache/blog_cache.dart';
+import '../../local/pending/pending_ops_store.dart';
+import '../../local/pending/pending_ops.dart';
 
 @lazySingleton
 class SyncService {
@@ -63,7 +63,7 @@ class SyncService {
 
               await _api.setLike(
                 blogId: op.blogId,
-                likedByMe: (op.payload?['likedByMe'] as bool?) ?? false,
+                likedByMe: (op.payload?['likedByMe'] as bool?) ?? false
               );
               break;
             case PendingOpType.createBlog:
