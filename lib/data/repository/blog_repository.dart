@@ -10,9 +10,8 @@ import 'package:computing_blog/local/blog_cache.dart';
 import 'package:computing_blog/local/pending_ops.dart';
 import 'package:computing_blog/local/pending_ops_store.dart';
 import 'package:computing_blog/local/sync_service.dart';
-import 'package:flutter/foundation.dart';
-import 'package:injectable/injectable.dart';
 import 'package:http/http.dart' as http;
+import 'package:injectable/injectable.dart';
 import 'package:uuid/uuid.dart';
 
 @lazySingleton
@@ -29,38 +28,40 @@ class BlogRepository {
   final logger = getLogger();
   final _uuid = const Uuid();
 
+  // Broadcast stream for UI
   final _blogController = StreamController<List<Blog>>.broadcast();
   Stream<List<Blog>> get blogStream => _blogController.stream;
 
   List<Blog> _currentBlogs = [];
 
-  static const _writeFastFailTimeout = Duration(seconds: 3);
+  static const _writeFastFailTimeout = Duration(seconds: 6);
 
   static const _minFetchInterval = Duration(seconds: 60);
 
-  // ----------------------------
+  // ---------------------------------------------------------------------------
   // Header image (fallback + cache)
-  // ----------------------------
+  // ---------------------------------------------------------------------------
 
   /// Deterministic fallback so it stays stable across reloads.
-  String _fallbackHeaderImageUrl(String blogId) {
-    return 'https://picsum.photos/seed/$blogId/800/450';
-  }
+  String _fallbackHeaderImageUrl(String blogId) =>
+      'https://picsum.photos/seed/$blogId/800/450';
 
-  Future<List<Blog>> _migrateMissingHeaderUrls(
+  Future<List<Blog>> _ensureHeaderUrlExists(
     List<Blog> blogs, {
     bool persist = true,
   }) async {
     final out = <Blog>[];
 
     for (final b in blogs) {
-      if (b.headerImageUrl == null || b.headerImageUrl!.isEmpty) {
-        final updated = b.copyWith(headerImageUrl: _fallbackHeaderImageUrl(b.id));
-        if (persist) await _cache.upsert(updated);
-        out.add(updated);
-      } else {
+      final hasUrl = b.headerImageUrl != null && b.headerImageUrl!.isNotEmpty;
+      if (hasUrl) {
         out.add(b);
+        continue;
       }
+
+      final updated = b.copyWith(headerImageUrl: _fallbackHeaderImageUrl(b.id));
+      if (persist) await _cache.upsert(updated);
+      out.add(updated);
     }
 
     return out;
@@ -74,24 +75,24 @@ class BlogRepository {
         ? _fallbackHeaderImageUrl(blog.id)
         : blog.headerImageUrl!;
 
-    // If base64 exists, ensure URL is set and return.
+    // Already have base64 -> only ensure URL is stored
     if (blog.headerImageBase64 != null && blog.headerImageBase64!.isNotEmpty) {
       if (url == blog.headerImageUrl) return blog;
+
       final updated = blog.copyWith(headerImageUrl: url);
       if (persist) await _cache.upsert(updated);
       return updated;
     }
 
-    // Try downloading the image (best-effort; may fail on web due to CORS).
+    // Try download (best-effort; can fail on web due to CORS)
     try {
       final resp = await http.get(Uri.parse(url));
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final bytes = resp.bodyBytes;
         if (bytes.isNotEmpty) {
-          final b64 = base64Encode(bytes);
           final updated = blog.copyWith(
             headerImageUrl: url,
-            headerImageBase64: b64,
+            headerImageBase64: base64Encode(bytes),
           );
           if (persist) await _cache.upsert(updated);
           return updated;
@@ -103,7 +104,7 @@ class BlogRepository {
       logger.w('[REPO] image download error url=$url', error: e, stackTrace: s);
     }
 
-    // At least persist the url so UI can load online
+    // Persist URL at least
     final updated = blog.copyWith(headerImageUrl: url);
     if (persist) await _cache.upsert(updated);
     return updated;
@@ -113,7 +114,7 @@ class BlogRepository {
     List<Blog> blogs, {
     bool persist = true,
   }) async {
-    // Sequential to avoid too many parallel downloads.
+    // sequential: avoid too many parallel requests
     final out = <Blog>[];
     for (final b in blogs) {
       out.add(await _ensureHeaderImageDownloaded(b, persist: persist));
@@ -121,38 +122,22 @@ class BlogRepository {
     return out;
   }
 
-  // ----------------------------
+  // ---------------------------------------------------------------------------
   // Public API
-  // ----------------------------
+  // ---------------------------------------------------------------------------
 
   Future<Result<List<Blog>>> getBlogPosts({bool forceRefresh = false}) async {
     logger.i('[REPO] getBlogPosts(forceRefresh=$forceRefresh)');
 
-    // 1) Cache path (if still fresh)
     try {
+      // 1) Cache path (if still fresh)
       if (!forceRefresh) {
-        final lastSync = await _cache.getLastSync();
-        logger.d('[REPO] cache lastSync=$lastSync');
-
-        final cacheFresh = lastSync != null &&
-            DateTime.now().difference(lastSync) < _minFetchInterval;
-
-        if (cacheFresh) {
-          logger.i('[REPO] cache fresh -> load from cache');
-          final cached = await _cache.getAll();
-          logger.i('[REPO] cache loaded count=${cached.length}');
-
-          if (cached.isNotEmpty) {
-            // Only ensure URL exists (no network download here)
-            final migrated = await _migrateMissingHeaderUrls(cached, persist: true);
-
-            _currentBlogs = migrated;
-            _blogController.add(_currentBlogs);
-            logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
-            return Success(migrated);
-          }
-
-          logger.w('[REPO] cache fresh but empty -> fallback to API');
+        final cached = await _tryLoadFreshCache();
+        if (cached != null && cached.isNotEmpty) {
+          logger.i('[REPO] cache fresh -> emit');
+          final migrated = await _ensureHeaderUrlExists(cached, persist: true);
+          await _emit(migrated, source: 'cache');
+          return Success(migrated);
         }
       }
 
@@ -162,26 +147,21 @@ class BlogRepository {
       blogs.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
       logger.i('[REPO] API fetched count=${blogs.length}');
 
-      // Ensure fallback URL exists and download base64 where possible.
-      // Persisting in cache is done by saveAll afterwards, so we can do persist:false here.
-      final withUrl = await _migrateMissingHeaderUrls(blogs, persist: false);
+      // Ensure url + base64 where possible (persist happens in saveAll)
+      final withUrl = await _ensureHeaderUrlExists(blogs, persist: false);
       final enriched = await _ensureHeaderImagesDownloaded(withUrl, persist: false);
 
       await _cache.saveAll(enriched);
       logger.i('[REPO] cache saveAll done count=${enriched.length}');
 
-      _currentBlogs = enriched;
-      _blogController.add(_currentBlogs);
-      logger.d('[REPO] stream emit from API count=${_currentBlogs.length}');
+      await _emit(enriched, source: 'api');
 
-      // Flush pending ops (best-effort)
-      logger.i('[REPO] sync flush start');
-      await _sync.sync();
-      logger.i('[REPO] sync flush done');
+      // Best-effort flush
+      await _syncSafe();
 
       return Success(enriched);
     } catch (e, s) {
-      // 3) Offline/error fallback to cache
+      // 3) fallback to cache
       if (_isOfflineError(e)) {
         logger.w('[REPO] offline -> fallback to cache', error: e, stackTrace: s);
       } else {
@@ -192,180 +172,127 @@ class BlogRepository {
       logger.i('[REPO] cache loaded (fallback) count=${cached.length}');
 
       if (cached.isNotEmpty) {
-        final migrated = await _migrateMissingHeaderUrls(cached, persist: true);
-
-        _currentBlogs = migrated;
-        _blogController.add(_currentBlogs);
-        logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
+        final migrated = await _ensureHeaderUrlExists(cached, persist: true);
+        await _emit(migrated, source: 'cache-fallback');
         return Success(migrated);
       }
 
-      if (_isOfflineError(e)) return Failure(NetworkException());
-      return Failure(ServerException(e.toString()));
+      return _isOfflineError(e) ? Failure(NetworkException()) : Failure(ServerException(e.toString()));
     }
   }
 
   Future<void> addBlogPost(Blog blog) async {
     logger.i('[REPO] addBlogPost title="${blog.title}"');
 
-    try {
-      await _api.addBlog(
-        title: blog.title,
-        content: blog.content ?? "",
-        headerImageUrl: blog.headerImageUrl,
-      ).timeout(_writeFastFailTimeout);
+    await _onlineOrOffline(
+      online: () async {
+        await _api
+            .addBlog(
+              title: blog.title,
+              content: blog.content ?? '',
+              headerImageUrl: blog.headerImageUrl,
+            ).timeout(_writeFastFailTimeout);
 
-      logger.i('[REPO] create online -> refresh');
-      await getBlogPosts(forceRefresh: true);
+        logger.i('[REPO] create online -> refresh');
+        await _refreshAndSync();
+      },
+      offline: () async {
+        final tempId = 'local-${_uuid.v4()}';
+        final headerUrl = _ensureOptimisticHeaderUrl(blog, tempId);
 
-      logger.i('[REPO] sync flush start');
-      await _sync.sync();
-      logger.i('[REPO] sync flush done');
-    } catch (e, s) {
-      if (!_isOfflineError(e)) {
-        logger.e('[REPO] create failed (not offline) -> rethrow', error: e, stackTrace: s);
-        rethrow;
-      }
-
-      logger.w('[REPO] offline -> enqueue create + optimistic insert', error: e, stackTrace: s);
-
-      final tempId = 'local-${_uuid.v4()}';
-      final opId = _uuid.v4();
-
-      // Ensure we always have a header URL even for optimistic entries
-      final headerUrl = (blog.headerImageUrl == null || blog.headerImageUrl!.isEmpty)
-          ? _fallbackHeaderImageUrl(tempId)
-          : blog.headerImageUrl;
-
-      await _pendingOps.add(
-        PendingOp(
-          id: opId,
+        await _queueOp(
           type: PendingOpType.createBlog,
           blogId: tempId,
-          createdAt: DateTime.now(),
           payload: {
             'title': blog.title,
             'content': blog.content ?? '',
             'headerImageUrl': headerUrl,
             'author': blog.author,
           },
-        ),
-      );
-      logger.w('[REPO] queued op=$opId type=createBlog tempId=$tempId');
+        );
 
-      final optimistic = Blog(
-        id: tempId,
-        author: blog.author,
-        title: blog.title,
-        content: blog.content,
-        contentPreview: blog.contentPreview ?? blog.content,
-        publishedAt: DateTime.now(),
-        lastUpdate: DateTime.now(),
-        headerImageUrl: headerUrl,
-        headerImageBase64: blog.headerImageBase64, // optional if you have it
-        createdByMe: true,
-        isLikedByMe: false,
-        likes: 0,
-        comments: blog.comments,
-        userIdsWithLikes: blog.userIdsWithLikes,
-      );
+        final optimistic = Blog(
+          id: tempId,
+          author: blog.author,
+          title: blog.title,
+          content: blog.content,
+          contentPreview: blog.contentPreview ?? blog.content,
+          publishedAt: DateTime.now(),
+          lastUpdate: DateTime.now(),
+          headerImageUrl: headerUrl,
+          headerImageBase64: blog.headerImageBase64,
+          createdByMe: true,
+          isLikedByMe: false,
+          likes: 0,
+          comments: blog.comments,
+          userIdsWithLikes: blog.userIdsWithLikes,
+        );
 
-      await _cache.upsert(optimistic);
-      logger.i('[REPO] optimistic cached tempId=$tempId');
-      await _emitFromCache();
-    }
+        await _optimisticUpsert(optimistic);
+      },
+    );
   }
 
   Future<void> updateBlogPost(
     String id, {
-    required String blogId, // (dein Signature-Stand) – wird hier nicht gebraucht, aber bleibt kompatibel
+    required String blogId, // bleibt kompatibel (wird nicht genutzt)
     required String title,
     required String content,
   }) async {
     logger.i('[REPO] updateBlogPost blogId=$id');
 
-    try {
-      await _api.patchBlog(blogId: id, title: title, content: content).timeout(_writeFastFailTimeout);
+    await _onlineOrOffline(
+      online: () async {
+        await _api
+            .patchBlog(blogId: id, title: title, content: content).timeout(_writeFastFailTimeout);
 
-      logger.i('[REPO] patch online -> refresh');
-      await getBlogPosts(forceRefresh: true);
-
-      logger.i('[REPO] sync flush start');
-      await _sync.sync();
-      logger.i('[REPO] sync flush done');
-    } catch (e, s) {
-      if (!_isOfflineError(e)) {
-        logger.e('[REPO] patch failed (not offline) -> rethrow', error: e, stackTrace: s);
-        rethrow;
-      }
-
-      logger.w('[REPO] offline -> enqueue patch + optimistic update', error: e, stackTrace: s);
-
-      final opId = _uuid.v4();
-      await _pendingOps.add(
-        PendingOp(
-          id: opId,
+        logger.i('[REPO] patch online -> refresh');
+        await _refreshAndSync();
+      },
+      offline: () async {
+        await _queueOp(
           type: PendingOpType.patchBlog,
           blogId: id,
-          createdAt: DateTime.now(),
           payload: {'title': title, 'content': content},
-        ),
-      );
-      logger.w('[REPO] queued op=$opId type=patchBlog blogId=$id');
-
-      final cached = await _cache.getAll();
-      final idx = cached.indexWhere((b) => b.id == id);
-      if (idx == -1) {
-        logger.w('[REPO] optimistic patch skipped -> not in cache blogId=$id');
-      } else {
-        final updated = _applyPatchLocally(
-          cached[idx],
-          title: title,
-          content: content,
         );
-        await _cache.upsert(updated);
-        logger.i('[REPO] optimistic patched in cache blogId=$id');
-      }
 
-      await _emitFromCache();
-    }
+        final cached = await _cache.getAll();
+        final idx = cached.indexWhere((b) => b.id == id);
+
+        if (idx == -1) {
+          logger.w('[REPO] optimistic patch skipped -> not in cache blogId=$id');
+        } else {
+          final updated = _applyPatchLocally(cached[idx], title: title, content: content);
+          await _cache.upsert(updated);
+          logger.i('[REPO] optimistic patched in cache blogId=$id');
+        }
+
+        await _emitFromCache();
+      },
+    );
   }
 
   Future<void> deleteBlogPost(String blogId) async {
     logger.i('[REPO] deleteBlogPost blogId=$blogId');
 
-    try {
-      await _api.deleteBlog(blogId: blogId).timeout(_writeFastFailTimeout);
+    await _onlineOrOffline(
+      online: () async {
+        await _api.deleteBlog(blogId: blogId).timeout(_writeFastFailTimeout);
 
-      logger.i('[REPO] delete online -> refresh');
-      await getBlogPosts(forceRefresh: true);
-
-      logger.i('[REPO] sync flush start');
-      await _sync.sync();
-      logger.i('[REPO] sync flush done');
-    } catch (e, s) {
-      if (!_isOfflineError(e)) {
-        logger.e('[REPO] delete failed (not offline) -> rethrow', error: e, stackTrace: s);
-        rethrow;
-      }
-
-      logger.w('[REPO] offline -> enqueue delete + optimistic remove', error: e, stackTrace: s);
-
-      final opId = _uuid.v4();
-      await _pendingOps.add(
-        PendingOp(
-          id: opId,
+        logger.i('[REPO] delete online -> refresh');
+        await _refreshAndSync();
+      },
+      offline: () async {
+        await _queueOp(
           type: PendingOpType.deleteBlog,
           blogId: blogId,
-          createdAt: DateTime.now(),
-        ),
-      );
-      logger.w('[REPO] queued op=$opId type=deleteBlog blogId=$blogId');
+        );
 
-      await _cache.removeById(blogId);
-      logger.i('[REPO] optimistic removed from cache blogId=$blogId');
-      await _emitFromCache();
-    }
+        await _cache.removeById(blogId);
+        logger.i('[REPO] optimistic removed from cache blogId=$blogId');
+        await _emitFromCache();
+      },
+    );
   }
 
   Future<void> toggleLike(Blog blog) async {
@@ -375,43 +302,30 @@ class BlogRepository {
 
     final nextLiked = !blog.isLikedByMe;
 
-    try {
-      await _api.setLike(blogId: blog.id, likedByMe: nextLiked).timeout(_writeFastFailTimeout);
+    await _onlineOrOffline(
+      online: () async {
+        await _api
+            .setLike(blogId: blog.id, likedByMe: nextLiked).timeout(_writeFastFailTimeout);
 
-      logger.i('[REPO] like online -> refresh');
-      await getBlogPosts(forceRefresh: true);
-
-      logger.i('[REPO] sync flush start');
-      await _sync.sync();
-      logger.i('[REPO] sync flush done');
-    } catch (e, s) {
-      if (!_isOfflineError(e)) {
-        logger.e('[REPO] like failed (not offline) -> rethrow', error: e, stackTrace: s);
-        rethrow;
-      }
-
-      logger.w('[REPO] offline -> enqueue like + optimistic update', error: e, stackTrace: s);
-
-      final opId = _uuid.v4();
-      await _pendingOps.add(
-        PendingOp(
-          id: opId,
+        logger.i('[REPO] like online -> refresh');
+        await _refreshAndSync();
+      },
+      offline: () async {
+        await _queueOp(
           type: PendingOpType.setLike,
           blogId: blog.id,
-          createdAt: DateTime.now(),
           payload: {'likedByMe': nextLiked},
-        ),
-      );
-      logger.w('[REPO] queued op=$opId type=setLike blogId=${blog.id} nextLiked=$nextLiked');
+        );
 
-      final updated = _applyLikeLocally(blog, nextLiked);
-      await _cache.upsert(updated);
+        final updated = _applyLikeLocally(blog, nextLiked);
+        await _cache.upsert(updated);
 
-      logger.i(
-        '[REPO] optimistic like cached blogId=${blog.id} likedByMe=${updated.isLikedByMe} likes=${updated.likes}',
-      );
-      await _emitFromCache();
-    }
+        logger.i(
+          '[REPO] optimistic like cached blogId=${blog.id} likedByMe=${updated.isLikedByMe} likes=${updated.likes}',
+        );
+        await _emitFromCache();
+      },
+    );
   }
 
   void dispose() {
@@ -419,22 +333,107 @@ class BlogRepository {
     _blogController.close();
   }
 
-  // ----------------------------
+  // ---------------------------------------------------------------------------
+  // Small flow helpers
+  // ---------------------------------------------------------------------------
+
+  Future<void> _refreshAndSync() async {
+    await getBlogPosts(forceRefresh: true);
+    await _syncSafe();
+  }
+
+  Future<void> _syncSafe() async {
+    try {
+      logger.i('[REPO] sync flush start');
+      await _sync.sync();
+      logger.i('[REPO] sync flush done');
+    } catch (e, s) {
+      // best-effort: don't fail UI flows due to sync
+      logger.w('[REPO] sync flush failed (ignored)', error: e, stackTrace: s);
+    }
+  }
+
+  Future<void> _onlineOrOffline({
+    required Future<void> Function() online,
+    required Future<void> Function() offline,
+  }) async {
+    try {
+      await online();
+    } catch (e, s) {
+      if (!_isOfflineError(e)) {
+        logger.e('[REPO] operation failed (not offline) -> rethrow', error: e, stackTrace: s);
+        rethrow;
+      }
+
+      logger.w('[REPO] offline -> fallback', error: e, stackTrace: s);
+      await offline();
+    }
+  }
+
+  Future<void> _queueOp({
+    required PendingOpType type,
+    required String blogId,
+    Map<String, dynamic>? payload,
+  }) async {
+    final opId = _uuid.v4();
+
+    await _pendingOps.add(
+      PendingOp(
+        id: opId,
+        type: type,
+        blogId: blogId,
+        createdAt: DateTime.now(),
+        payload: payload,
+      ),
+    );
+
+    logger.w('[REPO] queued op=$opId type=$type blogId=$blogId payloadKeys=${payload?.keys.toList() ?? []}');
+  }
+
+  Future<void> _optimisticUpsert(Blog blog) async {
+    await _cache.upsert(blog);
+    logger.i('[REPO] optimistic cached blogId=${blog.id}');
+    await _emitFromCache();
+  }
+
+  String _ensureOptimisticHeaderUrl(Blog blog, String idForFallback) {
+    final hasUrl = blog.headerImageUrl != null && blog.headerImageUrl!.isNotEmpty;
+    return hasUrl ? blog.headerImageUrl! : _fallbackHeaderImageUrl(idForFallback);
+  }
+
+  // ---------------------------------------------------------------------------
   // Cache emit helpers
-  // ----------------------------
+  // ---------------------------------------------------------------------------
+
+  Future<List<Blog>?> _tryLoadFreshCache() async {
+    final lastSync = await _cache.getLastSync();
+    logger.d('[REPO] cache lastSync=$lastSync');
+
+    final cacheFresh = lastSync != null &&
+        DateTime.now().difference(lastSync) < _minFetchInterval;
+
+    if (!cacheFresh) return null;
+
+    final cached = await _cache.getAll();
+    logger.i('[REPO] cache loaded count=${cached.length}');
+    return cached;
+  }
 
   Future<void> _emitFromCache() async {
     final cached = await _cache.getAll();
-    final migrated = await _migrateMissingHeaderUrls(cached, persist: true);
-
-    _currentBlogs = migrated;
-    _blogController.add(_currentBlogs);
-    logger.d('[REPO] stream emit from cache count=${_currentBlogs.length}');
+    final migrated = await _ensureHeaderUrlExists(cached, persist: true);
+    await _emit(migrated, source: 'cache');
   }
 
-  // ----------------------------
+  Future<void> _emit(List<Blog> blogs, {required String source}) async {
+    _currentBlogs = blogs;
+    _blogController.add(_currentBlogs);
+    logger.d('[REPO] stream emit source=$source count=${_currentBlogs.length}');
+  }
+
+  // ---------------------------------------------------------------------------
   // Local apply helpers
-  // ----------------------------
+  // ---------------------------------------------------------------------------
 
   Blog _applyPatchLocally(Blog blog, {String? title, String? content}) {
     final nextContent = content ?? blog.content;
@@ -445,21 +444,23 @@ class BlogRepository {
       content: nextContent,
       contentPreview: nextPreview,
       lastUpdate: DateTime.now(),
-      // headerImageUrl/headerImageBase64 bleiben unverändert
     );
   }
 
   Blog _applyLikeLocally(Blog blog, bool likedByMe) {
-    final int newLikes = likedByMe ? blog.likes + 1 : (blog.likes - 1).clamp(0, 1 << 31);
+    final newLikes = likedByMe
+        ? blog.likes + 1
+        : (blog.likes - 1).clamp(0, 1 << 31);
+
     return blog.copyWith(
       isLikedByMe: likedByMe,
       likes: newLikes,
     );
   }
 
-  // ----------------------------
+  // ---------------------------------------------------------------------------
   // Offline detection (web-safe)
-  // ----------------------------
+  // ---------------------------------------------------------------------------
 
   bool _isOfflineError(Object e) {
     if (e is TimeoutException) return true;

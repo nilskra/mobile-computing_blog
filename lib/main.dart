@@ -17,11 +17,6 @@ Future<void> main() async {
   Logger.level = Level.debug;
   WidgetsFlutterBinding.ensureInitialized();
 
-  const flavor = String.fromEnvironment(
-    'FLUTTER_APP_FLAVOR',
-    defaultValue: 'development',
-  );
-
   await GlobalConfiguration().loadFromAsset('app_settings.json');
 
   logger.i('GetIt setup started');
